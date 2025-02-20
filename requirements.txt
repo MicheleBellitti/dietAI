@@ -1,0 +1,5 @@
+crewAI
+flask
+fastapi
+langchain-community
+ollama
