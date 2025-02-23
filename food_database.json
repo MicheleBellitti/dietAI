@@ -1,0 +1,67 @@
+{
+    "vegetables": [
+      {"name": "Pomodoro (Tomato)", "portion": "100g", "carbs": 3.9, "protein": 0.9, "fat": 0.2},
+      {"name": "Zucchina (Zucchini)", "portion": "100g", "carbs": 3.1, "protein": 1.2, "fat": 0.3},
+      {"name": "Melanzana (Eggplant)", "portion": "100g", "carbs": 5.7, "protein": 1.0, "fat": 0.2},
+      {"name": "Peperone (Bell Pepper)", "portion": "100g", "carbs": 4.6, "protein": 0.9, "fat": 0.2},
+      {"name": "Carciofo (Artichoke)", "portion": "100g", "carbs": 10.5, "protein": 3.3, "fat": 0.2},
+      {"name": "Spinaci (Spinach)", "portion": "100g", "carbs": 3.6, "protein": 2.9, "fat": 0.4},
+      {"name": "Cavolo Nero (Kale)", "portion": "100g", "carbs": 8.8, "protein": 4.3, "fat": 0.9}
+    ],
+    
+    "fruits": [
+      {"name": "Mela (Apple)", "portion": "150g", "carbs": 19, "protein": 0.3, "fat": 0.2},
+      {"name": "Pera (Pear)", "portion": "150g", "carbs": 17, "protein": 0.4, "fat": 0.1},
+      {"name": "Arancia (Orange)", "portion": "150g", "carbs": 14, "protein": 1.2, "fat": 0.2},
+      {"name": "Fragola (Strawberry)", "portion": "100g", "carbs": 7.7, "protein": 0.7, "fat": 0.3},
+      {"name": "Pesca (Peach)", "portion": "150g", "carbs": 14, "protein": 1.0, "fat": 0.3},
+      {"name": "Uva (Grapes)", "portion": "100g", "carbs": 18, "protein": 0.7, "fat": 0.2}
+    ],
+    
+    "proteins": [
+      {"name": "Pollo (Chicken Breast)", "portion": "150g", "carbs": 0, "protein": 44, "fat": 5},
+      {"name": "Tacchino (Turkey Breast)", "portion": "150g", "carbs": 0, "protein": 42, "fat": 3},
+      {"name": "Manzo (Beef Steak)", "portion": "150g", "carbs": 0, "protein": 38, "fat": 15},
+      {"name": "Maiale (Pork Loin)", "portion": "150g", "carbs": 0, "protein": 35, "fat": 12},
+      {"name": "Salmone (Salmon)", "portion": "150g", "carbs": 0, "protein": 34, "fat": 18},
+      {"name": "Tonno (Tuna)", "portion": "150g", "carbs": 0, "protein": 40, "fat": 5},
+      {"name": "Uova (Eggs)", "portion": "2 large", "carbs": 0.6, "protein": 12, "fat": 10},
+      {"name": "Ricotta", "portion": "100g", "carbs": 3, "protein": 11, "fat": 8},
+      {"name": "Mozzarella", "portion": "100g", "carbs": 2.2, "protein": 22, "fat": 22},
+      {"name": "Parmigiano Reggiano", "portion": "30g", "carbs": 0.9, "protein": 10, "fat": 7.5}
+    ],
+    
+    "carbs": [
+      {"name": "Pasta Integrale (Whole Wheat Pasta)", "portion": "80g dry", "carbs": 58, "protein": 12, "fat": 2},
+      {"name": "Riso Integrale (Brown Rice)", "portion": "80g dry", "carbs": 62, "protein": 6, "fat": 2},
+      {"name": "Pane Integrale (Whole Wheat Bread)", "portion": "50g", "carbs": 23, "protein": 4, "fat": 1},
+      {"name": "Farro (Spelt)", "portion": "80g dry", "carbs": 59, "protein": 11, "fat": 2},
+      {"name": "Orzo (Barley)", "portion": "80g dry", "carbs": 60, "protein": 10, "fat": 2},
+      {"name": "Polenta", "portion": "100g cooked", "carbs": 18, "protein": 2, "fat": 1},
+      {"name": "Patata (Potato)", "portion": "150g", "carbs": 26, "protein": 2, "fat": 0.1},
+      {"name": "Fagioli (Beans)", "portion": "150g cooked", "carbs": 40, "protein": 15, "fat": 1},
+      {"name": "Lenticchie (Lentils)", "portion": "150g cooked", "carbs": 39, "protein": 18, "fat": 1}
+    ],
+    
+    "fats": [
+      {"name": "Olio Extra Vergine di Oliva (EVOO)", "portion": "1 tbsp", "carbs": 0, "protein": 0, "fat": 14},
+      {"name": "Noci (Walnuts)", "portion": "30g", "carbs": 4, "protein": 4, "fat": 18},
+      {"name": "Mandorle (Almonds)", "portion": "30g", "carbs": 6, "protein": 6, "fat": 15},
+      {"name": "Pinoli (Pine Nuts)", "portion": "30g", "carbs": 4, "protein": 4, "fat": 19},
+      {"name": "Avocado", "portion": "100g", "carbs": 9, "protein": 2, "fat": 15}
+    ],
+    
+    "condiments": [
+      {"name": "Pesto Genovese", "portion": "20g", "carbs": 2, "protein": 1, "fat": 12},
+      {"name": "Salsa di Pomodoro (Tomato Sauce)", "portion": "100g", "carbs": 10, "protein": 2, "fat": 0.5},
+      {"name": "Aceto Balsamico (Balsamic Vinegar)", "portion": "1 tbsp", "carbs": 3, "protein": 0, "fat": 0},
+      {"name": "Peperoncino (Chili Flakes)", "portion": "5g", "carbs": 1, "protein": 0, "fat": 0}
+    ],
+    
+    "herbs_spices": [
+      {"name": "Basilico (Basil)", "portion": "5g", "carbs": 0.2, "protein": 0.1, "fat": 0},
+      {"name": "Origano (Oregano)", "portion": "5g", "carbs": 0.5, "protein": 0.1, "fat": 0},
+      {"name": "Rosmarino (Rosemary)", "portion": "5g", "carbs": 0.3, "protein": 0.1, "fat": 0},
+      {"name": "Aglio (Garlic)", "portion": "5g", "carbs": 1, "protein": 0.2, "fat": 0}
+    ]
+  }

@@ -1,102 +1,143 @@
 from flask import Flask, request, render_template
-from crewai import Agent, Crew, Task, Process
+from crewai import Agent, Crew, Task, Process, LLM
 import ollama
+import json
 
 app = Flask(__name__)
 
-# Function to use Ollama's local language model
-def llm(prompt):
-    response = ollama.generate(model="llama3", prompt=prompt)
-    return response["response"]
+# Load food database
+with open('food_database.json') as f:
+    FOOD_DB = json.load(f)
 
-# Define the AI agents
+llm = LLM("ollama/llama3.1:8b", base_url='http://localhost:11434')
+
+# Enhanced Agent Definitions
 input_processor = Agent(
-    role="Input Processor",
-    goal="Turn user inputs into a clear summary.",
-    backstory="You excel at summarizing user details into simple descriptions.",
+    role="Nutrition Profile Analyst",
+    goal="Extract key nutritional requirements and food preferences from user input",
+    backstory="Expert in analyzing dietary needs and food restrictions",
     verbose=True,
-    llm=llm
+    llm=llm,
+    memory=True
 )
 
 nutrition_researcher = Agent(
-    role="Nutrition Researcher",
-    goal="Suggest nutritional guidelines based on a user’s profile.",
-    backstory="You’re a nutrition expert who knows dietary needs.",
+    role="Nutrition Scientist",
+    goal="Calculate precise nutritional targets based on user profile",
+    backstory="PhD in nutritional science with expertise in diet planning",
     verbose=True,
-    llm=llm
+    llm=llm,
+    tools=[]
 )
 
 diet_planner = Agent(
-    role="Diet Planner",
-    goal="Make a weekly diet plan using guidelines and food preferences.",
-    backstory="You craft personalized meal plans for users.",
+    role="Master Chef Dietitian",
+    goal="Create personalized meal plans using ONLY selected foods",
+    backstory="Michelin-star chef with nutrition certification",
+    verbose=True,
+    llm=llm,
+    allow_delegation=False
+)
+
+plan_validator = Agent(
+    role="Diet Plan Quality Assurance",
+    goal="Ensure meal plan strictly follows food preferences and nutritional goals",
+    backstory="Detail-oriented nutrition auditor",
     verbose=True,
     llm=llm
 )
 
-# Define tasks for the agents
-task1 = Task(
-    description="Summarize the user’s inputs into a paragraph with their profile and food preferences.",
+# Enhanced Task Definitions
+analysis_task = Task(
+    description="""Analyze user profile:
+    - Age: {age}
+    - Weight: {current_weight}kg
+    - Goal: {goal}
+    - Activity Level: {routine}
+    - Selected Foods: {food_preferences}
+    Calculate BMR and TDEE using Mifflin-St Jeor equation.
+    Identify nutritional requirements and constraints.""",
     agent=input_processor,
-    expected_output="A paragraph about the user’s profile and preferences."
+    expected_output="Structured JSON analysis of nutritional needs"
 )
 
-task2 = Task(
-    description="Use the summary to suggest daily nutritional guidelines, like calories and macronutrients.",
+nutrition_task = Task(
+    description="""Based on the analysis:
+    - Calculate daily calorie target
+    - Determine optimal macro split (protein/fat/carbs)
+    - Set micronutrient goals
+    - Strictly consider food preferences: {food_preferences}
+    Create detailed nutritional guidelines.""",
     agent=nutrition_researcher,
-    expected_output="Nutritional guidelines as a string."
+    expected_output="Precision nutrition plan in JSON format"
 )
 
-task3 = Task(
-    description="Create a weekly diet plan with daily meals based on the guidelines and preferred foods.",
+mealplan_task = Task(
+    description="""Create 7-day meal plan with:
+    - 3 main meals + 2 snacks daily
+    - Use ONLY these foods: {food_preferences}
+    - Strict macro adherence
+    - Italian cuisine focus
+    - Include recipes and portion sizes
+    - No unapproved ingredients!""",
     agent=diet_planner,
-    expected_output="A weekly diet plan with meals for each day."
+    expected_output="Markdown formatted meal plan with recipes"
 )
 
-# Set up the crew to run tasks in sequence
+validation_task = Task(
+    description="""Verify meal plan:
+    1. Only uses approved ingredients
+    2. Meets nutritional targets
+    3. Provides variety
+    4. Practical preparation""",
+    agent=plan_validator,
+    expected_output="Validated meal plan with improvement suggestions"
+)
+
+# Configure Crew
 crew = Crew(
-    agents=[input_processor, nutrition_researcher, diet_planner],
-    tasks=[task1, task2, task3],
+    agents=[input_processor, nutrition_researcher, diet_planner, plan_validator],
+    tasks=[analysis_task, nutrition_task, mealplan_task, validation_task],
     process=Process.sequential,
-    verbose=True
+    verbose=True,
 )
 
-# Flask routes
-@app.route('/', methods=['GET', 'POST'])
+# Flask Routes
+@app.route('/', methods=['GET'])
 def index():
-    if request.method == 'POST':
-        # Get form data
-        vegetables = request.form['vegetables'].split(',')
-        fruits = request.form['fruits'].split(',')
-        other_foods = request.form['other_foods'].split(',')
-        goal = request.form['goal']
-        kg_per_week = float(request.form['kg_per_week']) if request.form['kg_per_week'] else None
-        age = int(request.form['age'])
-        current_weight = float(request.form['current_weight'])
-        sex = request.form['sex']
-        routine = request.form['routine']
+    return render_template('index.html', food_db=FOOD_DB)
 
-        # Organize inputs into a dictionary
+@app.route('/generate', methods=['POST'])
+def generate():
+    try:
+        # Get selected foods from checkboxes
+        selected_foods = {
+            'vegetables': request.form.getlist('vegetables'),
+            'fruits': request.form.getlist('fruits'),
+            'proteins': request.form.getlist('proteins'),
+            'carbs': request.form.getlist('carbs'),
+            'fats': request.form.getlist('fats')
+        }
+        
+        # Get other form data
         user_inputs = {
-            "vegetables": vegetables,
-            "fruits": fruits,
-            "other_foods": other_foods,
-            "goal": goal,
-            "kg_per_week": kg_per_week,
-            "age": age,
-            "current_weight": current_weight,
-            "sex": sex,
-            "routine": routine
+            'age': int(request.form['age']),
+            'current_weight': float(request.form['current_weight']),
+            'height': float(request.form['height']),
+            'goal': request.form['goal'],
+            'kg_per_week': float(request.form.get('kg_per_week', 0.5)),
+            'routine': request.form['routine'],
+            'food_preferences': selected_foods
         }
 
-        # Run the crew with user inputs
-        result = crew.kickoff(inputs={"user_inputs": user_inputs})
-
-        # Show the diet plan
-        return render_template('result.html', diet_plan=result)
-
-    # Show the input form
-    return render_template('index.html')
+        # Execute planning process
+        result = crew.kickoff(inputs=user_inputs)
+        return render_template('result.html', 
+                             diet_plan=result,
+                             selected_foods=selected_foods)
+    
+    except Exception as e:
+        return render_template('error.html', error=str(e))
 
 if __name__ == '__main__':
     app.run(debug=True)
