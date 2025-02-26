@@ -1,10 +1,13 @@
 from flask import Flask, request, jsonify, session
+from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, current_user
 import sqlite3
 from agents import generate_meal_plan  # Existing logic
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key"
+app.secret_key = str(hash("kekkodesu"))
+
+CORS(app) 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
