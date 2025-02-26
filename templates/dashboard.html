@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container py-5">
+        <h1 class="text-center mb-4">Dashboard</h1>
+        <p>Welcome, {{ current_user.username }}!</p>
+
+        <h3>Meal Plans</h3>
+        <ul>
+            {% for plan in plans %}
+                <li>{{ plan.date }} - <a href="#">{{ plan.plan['goal'] }}</a></li>
+            {% else %}
+                <li>No meal plans generated yet.</li>
+            {% endfor %}
+        </ul>
+
+        <h3>Progress</h3>
+        <ul>
+            {% for entry in progress %}
+                <li>{{ entry.date }} - Weight: {{ entry.weight }}kg, Body Fat: {{ entry.body_fat }}%, Muscle Mass: {{ entry.muscle_mass }}kg</li>
+            {% else %}
+                <li>No progress logged yet.</li>
+            {% endfor %}
+        </ul>
+
+        <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+    </div>
+</body>
+</html>

@@ -1,7 +1,11 @@
-from flask import Flask, request, render_template
-from crewai import Agent, Crew, Task, Process, LLM
-import ollama
+import uuid
+from flask import Flask, request, render_template, redirect, url_for, flash, session
+from flask_login import LoginManager, login_user, login_required, logout_user, UserMixin, current_user
 import json
+import yaml
+import os
+from datetime import datetime
+from agents import generate_meal_plan
 
 app = Flask(__name__)
 
@@ -9,135 +13,139 @@ app = Flask(__name__)
 with open('food_database.json') as f:
     FOOD_DB = json.load(f)
 
-llm = LLM("ollama/llama3.1:8b", base_url='http://localhost:11434')
+# Load Configuration
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-# Enhanced Agent Definitions
-input_processor = Agent(
-    role="Nutrition Profile Analyst",
-    goal="Extract key nutritional requirements and food preferences from user input",
-    backstory="Expert in analyzing dietary needs and food restrictions",
-    verbose=True,
-    llm=llm,
-    memory=True
-)
+USER_DB_PATH = config["storage"]["user_db"]
+MEAL_PLANS_DIR = config["storage"]["meal_plans_dir"]
 
-nutrition_researcher = Agent(
-    role="Nutrition Scientist",
-    goal="Calculate precise nutritional targets based on user profile",
-    backstory="PhD in nutritional science with expertise in diet planning",
-    verbose=True,
-    llm=llm,
-    tools=[]
-)
+app = Flask(__name__)
+app.secret_key = "your_secret_key"
 
-diet_planner = Agent(
-    role="Master Chef Dietitian",
-    goal="Create personalized meal plans using ONLY selected foods",
-    backstory="Michelin-star chef with nutrition certification",
-    verbose=True,
-    llm=llm,
-    allow_delegation=False
-)
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
 
-plan_validator = Agent(
-    role="Diet Plan Quality Assurance",
-    goal="Ensure meal plan strictly follows food preferences and nutritional goals",
-    backstory="Detail-oriented nutrition auditor",
-    verbose=True,
-    llm=llm
-)
+class User(UserMixin):
+    def __init__(self, username):
+        self.username = username
 
-# Enhanced Task Definitions
-analysis_task = Task(
-    description="""Analyze user profile:
-    - Age: {age}
-    - Weight: {current_weight}kg
-    - Goal: {goal}
-    - Activity Level: {routine}
-    - Selected Foods: {food_preferences}
-    Calculate BMR and TDEE using Mifflin-St Jeor equation.
-    Identify nutritional requirements and constraints.""",
-    agent=input_processor,
-    expected_output="Structured JSON analysis of nutritional needs"
-)
+    def get_id(self):
+        return self.username
 
-nutrition_task = Task(
-    description="""Based on the analysis:
-    - Calculate daily calorie target
-    - Determine optimal macro split (protein/fat/carbs)
-    - Set micronutrient goals
-    - Strictly consider food preferences: {food_preferences}
-    Create detailed nutritional guidelines.""",
-    agent=nutrition_researcher,
-    expected_output="Precision nutrition plan in JSON format"
-)
+@login_manager.user_loader
+def load_user(username):
+    data = read_json(USER_DB_PATH)
+    user_record = next((u for u in data["users"] if u["username"] == username), None)
+    return User(username=user_record["username"]) if user_record else None
 
-mealplan_task = Task(
-    description="""Create 7-day meal plan with:
-    - 3 main meals + 2 snacks daily
-    - Use ONLY these foods: {food_preferences}
-    - Strict macro adherence
-    - Italian cuisine focus
-    - Include recipes and portion sizes
-    - No unapproved ingredients!""",
-    agent=diet_planner,
-    expected_output="Markdown formatted meal plan with recipes"
-)
-
-validation_task = Task(
-    description="""Verify meal plan:
-    1. Only uses approved ingredients
-    2. Meets nutritional targets
-    3. Provides variety
-    4. Practical preparation""",
-    agent=plan_validator,
-    expected_output="Validated meal plan with improvement suggestions"
-)
-
-# Configure Crew
-crew = Crew(
-    agents=[input_processor, nutrition_researcher, diet_planner, plan_validator],
-    tasks=[analysis_task, nutrition_task, mealplan_task, validation_task],
-    process=Process.sequential,
-    verbose=True,
-)
-
-# Flask Routes
-@app.route('/', methods=['GET'])
-def index():
-    return render_template('index.html', food_db=FOOD_DB)
-
-@app.route('/generate', methods=['POST'])
-def generate():
+def read_json(path):
     try:
-        # Get selected foods from checkboxes
-        selected_foods = {
-            'vegetables': request.form.getlist('vegetables'),
-            'fruits': request.form.getlist('fruits'),
-            'proteins': request.form.getlist('proteins'),
-            'carbs': request.form.getlist('carbs'),
-            'fats': request.form.getlist('fats')
-        }
-        
-        # Get other form data
-        user_inputs = {
-            'age': int(request.form['age']),
-            'current_weight': float(request.form['current_weight']),
-            'height': float(request.form['height']),
-            'goal': request.form['goal'],
-            'kg_per_week': float(request.form.get('kg_per_week', 0.5)),
-            'routine': request.form['routine'],
-            'food_preferences': selected_foods
-        }
+        with open(path, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
-        # Execute planning process
-        result = crew.kickoff(inputs=user_inputs)
-        return render_template('result.html', 
-                             diet_plan=result,
-                             selected_foods=selected_foods)
+def write_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+from flask import render_template_string
+import markdown
+
+@app.route('/plan/<filename>')
+def show_plan(filename):
+    # Load MD file from plans directory
+    with open(f'meal_plans/plans/{filename}.md', 'r') as f:
+        md_content = f.read()
     
-    except Exception as e:
-        return render_template('error.html', error=str(e))
+    # Convert Markdown to HTML
+    html_content = markdown.markdown(md_content)
+    
+    # Render with template
+    return render_template('result.html', 
+                         content=html_content,
+                         filename=filename)
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html", food_db=FOOD_DB)
 
-if __name__ == '__main__':
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        data = read_json(USER_DB_PATH)
+        user_record = next((u for u in data["users"] if u["username"] == username), None)
+
+        if user_record:
+            user = User(username=user_record["username"])
+            login_user(user)
+            return redirect(url_for("dashboard"))
+        flash("Invalid username")
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    user_id = current_user.get_id()
+    meal_plans_meta = read_json(f"{MEAL_PLANS_DIR}/{user_id}.json")
+    meal_plans_meta = meal_plans_meta if meal_plans_meta else {}
+    meal_plans = {}
+    for id in meal_plans_meta.keys():
+        # meal plans are stored in .md files
+        meal_plans[id] = {"plan": open(meal_plans_meta[id]["plan_path"], "r").read()}
+    return render_template("dashboard.html", meal_plans=meal_plans)
+
+@app.route("/generate", methods=["POST"])
+@login_required
+def generate():
+    selected_foods = {
+        "vegetables": request.form.getlist("vegetables"),
+        "fruits": request.form.getlist("fruits"),
+        "proteins": request.form.getlist("proteins"),
+        "carbs": request.form.getlist("carbs"),
+        "fats": request.form.getlist("fats"),
+    }
+
+    user_inputs = {
+        "age": int(request.form["age"]),
+        "current_weight": float(request.form["weight"]),
+        "height": float(request.form["height"]),
+        "goal": request.form["goal"],
+        "food_preferences": selected_foods,
+    }
+    crew =  generate_meal_plan(user_inputs)
+    meal_plan = crew.model_dump_json()
+    
+    user_id = current_user.get_id()
+    meal_plan_data = read_json(f"{MEAL_PLANS_DIR}/{user_id}.json")
+    new_id = uuid.uuid4().hex
+    meal_plan_data[f'{new_id}'] = {"date": str(datetime.now()), "plan_path": f"{MEAL_PLANS_DIR}/plans/{new_id}.md"}
+    write_json(f"{MEAL_PLANS_DIR}/{user_id}.json", meal_plan_data)
+    with open(f"{MEAL_PLANS_DIR}/plans/{new_id}.md", "w") as f:
+        f.write(meal_plan)
+
+    return render_template("result.html", diet_plan=meal_plan)
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        data = read_json(USER_DB_PATH)
+        if next((u for u in data["users"] if u["username"] == username), None):
+            flash("Username already exists")
+        else:
+            data["users"].append({"username": username})
+            write_json(USER_DB_PATH, data)
+            return redirect(url_for("login"))
+    return render_template("register.html")
+
+if __name__ == "__main__":
     app.run(debug=True)

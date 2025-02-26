@@ -2,18 +2,64 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Your Diet Plan</title>
+    <title>{{ filename }} - Diet Plan</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+    <style>
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        @media (max-width: 767px) {
+            .markdown-body {
+                padding: 15px;
+            }
+        }
+
+        .plan-actions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        /* Dark mode support */
+        .dark-mode .markdown-body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        .dark-mode .markdown-body pre {
+            background-color: #2d2d2d;
+        }
+    </style>
 </head>
-<body>
-    <div class="container mt-4">
-        <h1 class="text-center">Your Weekly Diet Plan</h1>
-        <div class="card mt-3">
-            <div class="card-body">
-                <pre class="mb-0">{{ diet_plan }}</pre>
-            </div>
-        </div>
-        <a href="/" class="btn btn-secondary mt-3">Back to Form</a>
+<body class="markdown-body">
+    <div class="plan-actions">
+        <button onclick="copyToClipboard()" class="btn btn-outline-secondary">
+            📋 Copy
+        </button>
+        <a href="/" class="btn btn-primary">New Plan</a>
     </div>
+
+    {{ content|safe }}
+
+    <script>
+        function copyToClipboard() {
+            const content = document.body.innerText;
+            navigator.clipboard.writeText(content).then(() => {
+                alert('Plan copied to clipboard!');
+            });
+        }
+
+        // Dark mode handling
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark-mode');
+        }
+    </script>
 </body>
 </html>

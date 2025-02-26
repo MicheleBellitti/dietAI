@@ -1,15 +1,51 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diet Planner</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
+        /* Custom styling for dark mode */
+        body.dark-mode {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        .dark-mode .food-category {
+            background: #2d2d2d !important;
+            border: 1px solid #404040;
+        }
+
+        .dark-mode .food-item {
+            background: #333333 !important;
+            color: #ffffff !important;
+            border: 1px solid #404040;
+        }
+
+        .dark-mode .form-control {
+            background-color: #2d2d2d !important;
+            color: #ffffff !important;
+            border-color: #404040;
+        }
+
+        .dark-mode .form-control:focus {
+            background-color: #333333 !important;
+            color: #ffffff !important;
+        }
+
+        .dark-mode .form-check-input {
+            filter: invert(1);
+            background-color: #4a4a4a;
+        }
+
         .food-category {
             margin-bottom: 2rem;
             padding: 1.5rem;
             border-radius: 10px;
             background: #f8f9fa;
         }
+
         .food-item {
             margin: 0.5rem;
             padding: 0.5rem 1rem;
@@ -17,28 +53,92 @@
             border-radius: 20px;
             display: inline-block;
         }
+
+        #themeToggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: inherit;
+            z-index: 1000;
+        }
+
+        .btn-primary {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding-top: 3rem;
+            }
+
+            #themeToggle {
+                top: 0.5rem;
+                right: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <button id="themeToggle" aria-label="Toggle theme">🌙</button>
     <div class="container py-5">
         <h1 class="text-center mb-4">Italian Diet Planner</h1>
-        <form method="post" action="/generate">
-            
+        <form method="post" action="/generate" autocomplete="on">
             <!-- Biometric Inputs -->
             <div class="form-group">
                 <label>Age:</label>
-                <input type="number" name="age" class="form-control" required>
+                <input type="number" name="age" class="form-control" required min="12" max="120">
             </div>
-            
+            <div class="form-group">
+                <label>Weight (kg):</label>
+                <input type="number" name="weight" class="form-control" required step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Height (cm):</label>
+                <input type="number" name="height" class="form-control" required min="100" max="250" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Body Fat % (optional):</label>
+                <input type="number" name="body_fat" class="form-control" min="5" max="50" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>KG Per Week:</label>
+                <input type="number" name="kg_per_week" class="form-control" required step="0.1" min="0.1" max="5">
+            </div>
+            <div class="form-group">
+                <label>Goal:</label>
+                <select name="goal" class="form-control" required>
+                    <option value="lose weight">Lose Weight</option>
+                    <option value="gain muscle">Gain Muscle</option>
+                    <option value="maintain">Maintain</option>
+                    <option value="healthier nutrition">Healthier Nutrition</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Activity Level:</label>
+                <select name="routine" class="form-control" required>
+                    <option value="sedentary">Sedentary</option>
+                    <option value="lightly active">Lightly Active</option>
+                    <option value="moderately active">Moderately Active</option>
+                    <option value="very active">Very Active</option>
+                </select>
+            </div>
+
             <!-- Food Selection -->
             {% for category, items in food_db.items() %}
             <div class="food-category">
                 <h4>{{ category|title }}</h4>
                 {% for item in items %}
                 <div class="form-check food-item">
-                    <input class="form-check-input" type="checkbox" 
-                           name="{{ category }}" value="{{ item.name }}"
-                           id="{{ category }}-{{ loop.index }}">
+                    <input class="form-check-input" type="checkbox" name="{{ category }}" value="{{ item.name }}" id="{{ category }}-{{ loop.index }}">
                     <label class="form-check-label" for="{{ category }}-{{ loop.index }}">
                         {{ item.name }} ({{ item.portion }})
                     </label>
@@ -50,5 +150,19 @@
             <button type="submit" class="btn btn-primary btn-block">Generate Plan</button>
         </form>
     </div>
+
+    <script>
+        // Theme toggle functionality
+        document.getElementById("themeToggle").addEventListener("click", function() {
+            document.body.classList.toggle("dark-mode");
+            let theme = document.body.classList.contains("dark-mode") ? "dark" : "light";
+            localStorage.setItem("theme", theme);
+        });
+
+        // Apply saved theme
+        if (localStorage.getItem("theme") === "dark") {
+            document.body.classList.add("dark-mode");
+        }
+    </script>
 </body>
 </html>
