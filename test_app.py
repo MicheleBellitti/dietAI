@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
-from app import app, crew
+from backend.app import app
+from backend.agents import generate_meal_plan
 
 class TestDietPlanner(unittest.TestCase):
     """
@@ -43,7 +44,7 @@ class TestDietPlanner(unittest.TestCase):
         }
 
         # Run the crew with the user inputs
-        result = crew.kickoff(inputs={"user_inputs": user_inputs})
+        result = generate_meal_plan(user_inputs)
 
         # Check if the final output is the mock diet plan
         self.assertEqual(result, "Mock diet plan")
@@ -53,7 +54,7 @@ class TestDietPlanner(unittest.TestCase):
         Test GET request to the index page.
         Ensures the input form is rendered correctly.
         """
-        response = self.app.get('/')
+        response = self.app.get('/api/generate-plan')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Diet Planner', response.data)
 
@@ -72,7 +73,7 @@ class TestDietPlanner(unittest.TestCase):
         ]
 
         # Simulate POST request with sample form data
-        response = self.app.post('/', data={
+        response = self.app.post('/api/generate-plan', data={
             'vegetables': 'broccoli,spinach',
             'fruits': 'apples,bananas',
             'other_foods': 'chicken,rice',

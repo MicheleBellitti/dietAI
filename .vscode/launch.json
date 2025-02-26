@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Launch app.py",
+      "program": "${workspaceFolder}/app.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Launch frontend.py",
+      "program": "${workspaceFolder}/frontend.py",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "programPath",
+      "description": "Path to the Python program"
+    }
+  ]
+}
