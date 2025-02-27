@@ -56,8 +56,8 @@ def register():
 def get_food_db():
     conn = sqlite3.connect("diet_planner.db")
     c = conn.cursor()
-    c.execute("SELECT name, category FROM foods")
-    foods = [{"name": row[0], "category": row[1]} for row in c.fetchall()]
+    c.execute("SELECT name, portion, carbs, protein, fat FROM foods")
+    foods = [{"name": row[0], "portion": row[1], "carbs":row[2], "protein":row[3],"fat":row[4]} for row in c.fetchall()]
     conn.close()
     return jsonify(foods)
 

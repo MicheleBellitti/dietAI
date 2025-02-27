@@ -23,5 +23,9 @@
     "@types/react-dom": "^19",
     "tailwindcss": "^4.0.9",
     "typescript": "^5"
-  }
+  },
+  "description": "Next-js Frontend module for the DietAI Application",
+  "main": "next.config.js",
+  "author": "Michele Bellitti (https::www.michelebellitti.github.io/webapp/)",
+  "license": "ISC"
 }
