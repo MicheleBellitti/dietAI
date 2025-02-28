@@ -4,3 +4,4 @@ flask-login
 fastapi
 langchain-community
 ollama
+waitress
