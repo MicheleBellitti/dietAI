@@ -4,6 +4,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, cur
 import sqlite3
 from agents import generate_meal_plan  # Existing logic
 
+from waitress import serve
+
 app = Flask(__name__)
 app.secret_key = str(hash("kekkodesu"))
 
@@ -96,4 +98,4 @@ def get_meal_plan(id):
     return jsonify({"plan": plan[0]}) if plan else jsonify({"error": "Not found"}), 404
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    serve(app, host='localhost', port=5000)
