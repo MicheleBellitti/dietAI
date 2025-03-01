@@ -37,7 +37,7 @@ const Button = ({ children, className, isLoading, ...props }: ButtonProps) => {
 
 const StyledWrapper = styled.div`
   .button {
-    --black-700: hsla(0 0% 12% / 1);
+    --black-400: hsla(0 0% 12% / 1);
     --border_radius: 9999px;
     --transtion: 0.3s ease-in-out;
     --offset: 2px;
