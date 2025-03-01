@@ -1,7 +1,12 @@
 crewAI
 flask
 flask-login
+flask_cors
 fastapi
 langchain-community
 ollama
 waitress
+uvicorn
+python-multipart
+security
+passlib[bcrypt]

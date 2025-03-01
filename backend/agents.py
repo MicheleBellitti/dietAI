@@ -61,7 +61,7 @@ plan_validator = Agent(
 analysis_task = Task(
     description="""Analyze user profile:
     - Age: {age}
-    - Weight: {current_weight}kg
+    - Weight: {weight}kg
     - Goal: {goal}
     - Selected Foods: {food_preferences}
     Calculate BMR and TDEE using Mifflin-St Jeor equation.
@@ -99,11 +99,17 @@ validation_task = Task(
 )
 
 # CrewAI Processing Function
-def generate_meal_plan(user_inputs):
+async def generate_meal_plan(user_inputs, progress_callback: callable):
     crew = Crew(
         agents=[input_processor, nutrition_researcher, diet_planner, plan_validator],
-        tasks=[analysis_task, nutrition_task, mealplan_task, validation_task]
+        tasks=[analysis_task, nutrition_task, mealplan_task, validation_task],
+        verbose=True,
+        memory=True
     )
+    await progress_callback(0.1, "Initializing...")
+    
+    await progress_callback(0.5, "Generating recipes...")
     result = crew.kickoff(user_inputs)
-    return result
+
+    return result.output
     

@@ -1,6 +1,9 @@
 // pages/generate-plan.tsx
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Loader from '../components/Loader';
+import Form from '@/components/LoginForm';
+import Button from '@/components/Button';
 
 export default function GeneratePlan() {
   const [foods, setFoods] = useState<{ [category: string]: string[] }>({});
@@ -59,12 +62,14 @@ export default function GeneratePlan() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setLoading(true);
     setError('');
 
     try {
       const res = await fetch('/api/generate-plan', {
         method: 'POST',
+        signal: AbortSignal.timeout(600000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ age, weight, height, goal, food_preferences: selectedFoods }),
         credentials: 'include',
@@ -154,7 +159,7 @@ export default function GeneratePlan() {
             loading ? 'bg-green-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
           }`}
         >
-          {loading ? 'Generating...' : 'Generate Plan'}
+          {loading ? <Loader></Loader> : 'Generate Plan'}
         </button>
         {error && <p className="text-red-500 text-center">{error}</p>}
       </form>

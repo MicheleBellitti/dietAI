@@ -2,9 +2,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Pattern from '@/components/Pattern';
 
 export default function Login() {
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -18,7 +20,10 @@ export default function Login() {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ 
+          username: username,
+          password: password 
+        }),
         credentials: 'include',
       });
 
@@ -37,7 +42,7 @@ export default function Login() {
 
   return (
     <div className="max-w-md mx-auto mt-10">
-      <h1 className="text-3xl font-bold mb-6 text-center">Login</h1>
+      <h1 className="text-3xl font-bold mb-9 text-center ">Login</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <input
@@ -45,10 +50,20 @@ export default function Login() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username"
-            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="bg-[#222630] px-4 py-3 outline-none w-[400px] text-white rounded-lg border-2 transition-colors duration-100 border-solid focus:border-[#596A95] border-[#2B3040]"
             required
           />
         </div>
+        <div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="bg-[#222630] px-6 py-3 outline-none w-[400px] text-white rounded-lg border-2 transition-colors duration-100 border-solid focus:border-[#596A95] border-[#2B3040]"
+            required
+          />
+          </div>
         <button
           type="submit"
           disabled={loading}
