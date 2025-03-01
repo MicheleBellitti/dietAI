@@ -1,167 +1,265 @@
 // pages/generate-plan.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import Loader from '../components/Loader';
-import Form from '@/components/LoginForm';
+import Loader from '@/components/Loader';
 import Button from '@/components/Button';
+import Card  from '@/components/Card'; // Assume you have a Card component
 
 export default function GeneratePlan() {
   const [foods, setFoods] = useState<{ [category: string]: string[] }>({});
   const [selectedFoods, setSelectedFoods] = useState<{ [category: string]: string[] }>({});
-  const [age, setAge] = useState('');
-  const [weight, setWeight] = useState('');
-  const [height, setHeight] = useState('');
-  const [goal, setGoal] = useState('');
+  const [formData, setFormData] = useState({
+    age: '',
+    weight: '',
+    height: '',
+    goal: ''
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [ws, setWs] = useState<WebSocket | null>(null);
   const router = useRouter();
 
+  // WebSocket cleanup
   useEffect(() => {
-    const fetchFoods = async () => {
-      try {
-        const res = await fetch('/api/food-db', { credentials: 'include' });
-        if (res.status === 401) {
-          router.push('/login');
-          return;
-        }
-        if (res.ok) {
-          const data = await res.json();
-          // Assuming data is an array of { name: string, category: string }
-          const grouped = data.reduce((acc: { [key: string]: string[] }, food: { name: string; category: string }) => {
-            if (!acc[food.category]) acc[food.category] = [];
-            acc[food.category].push(food.name);
-            return acc;
-          }, {});
-          setFoods(grouped);
-          const initialSelected = Object.keys(grouped).reduce((acc, category) => {
-            acc[category] = [];
-            return acc;
-          }, {} as { [key: string]: string[] });
-          setSelectedFoods(initialSelected);
-        } else {
-          setError('Failed to load food options.');
-        }
-      } catch (err) {
-        setError('An error occurred while fetching food options.');
+    return () => {
+      if (ws) {
+        ws.close();
       }
     };
-    fetchFoods();
-  }, [router]);
+  }, [ws]);
 
-  const handleFoodToggle = (category: string, food: string) => {
-    setSelectedFoods((prev) => {
-      const newSelected = { ...prev };
-      if (newSelected[category].includes(food)) {
-        newSelected[category] = newSelected[category].filter((f) => f !== food);
-      } else {
-        newSelected[category].push(food);
-      }
-      return newSelected;
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    setLoading(true);
-    setError('');
-
+  const fetchFoods = useCallback(async () => {
     try {
-      const res = await fetch('/api/generate-plan', {
-        method: 'POST',
-        signal: AbortSignal.timeout(600000),
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ age, weight, height, goal, food_preferences: selectedFoods }),
-        credentials: 'include',
-      });
-
+      const res = await fetch('/api/food-db', { credentials: 'include' });
       if (res.status === 401) {
         router.push('/login');
         return;
       }
-
       if (res.ok) {
         const data = await res.json();
-        router.push(`/plan/${data.id}`);
+        const grouped = data.reduce((acc: { [key: string]: string[] }, food: { 
+          name: string; 
+          category: string 
+        }) => {
+          if (!acc[food.category]) acc[food.category] = [];
+          acc[food.category].push(food.name);
+          return acc;
+        }, {});
+        setFoods(grouped);
+        setSelectedFoods(
+          Object.keys(grouped).reduce((acc, category) => ({
+            ...acc,
+            [category]: []
+          }), {})
+        );
       } else {
-        setError('Failed to generate meal plan.');
+        setError('Failed to load food options.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
-    } finally {
-      setLoading(false);
+      setError('Error fetching food options');
     }
+  }, [router]);
+
+  useEffect(() => {
+    fetchFoods();
+  }, [fetchFoods]);
+
+  const handleFoodToggle = (category: string, food: string) => {
+    setSelectedFoods(prev => ({
+      ...prev,
+      [category]: prev[category].includes(food) 
+        ? prev[category].filter(f => f !== food)
+        : [...prev[category], food]
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setProgress(0);
+    setStatusMessage('Initializing...');
+
+    const newWs = new WebSocket(`wss://${window.location.host}/api/generate-plan-ws`);
+    
+    newWs.onopen = () => {
+      // Send authentication
+      const authData = {
+        username: localStorage.getItem('username'), // Adjust based on your auth storage
+        token: localStorage.getItem('token')
+      };
+      newWs.send(JSON.stringify(authData));
+    };
+
+    newWs.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      switch (data.type) {
+        case 'progress':
+          setProgress(data.progress * 100);
+          setStatusMessage(data.message);
+          break;
+        case 'complete':
+          router.push(`/plan/${data.id}`);
+          newWs.close();
+          break;
+        case 'error':
+          setError(data.message);
+          setLoading(false);
+          newWs.close();
+          break;
+      }
+    };
+
+    newWs.onerror = (error) => {
+      setError('Connection error');
+      setLoading(false);
+    };
+
+    newWs.onclose = () => {
+      setLoading(false);
+      setWs(null);
+    };
+
+    // Wait for authentication confirmation
+    const authListener = (event: MessageEvent) => {
+      const authResponse = JSON.parse(event.data);
+      if (authResponse.error) {
+        setError(authResponse.error);
+        newWs.close();
+        return;
+      }
+      
+      // Send parameters after successful auth
+      newWs.send(JSON.stringify({
+        ...formData,
+        food_preferences: selectedFoods
+      }));
+      
+      // Remove the temporary auth listener
+      newWs.removeEventListener('message', authListener);
+    };
+
+    newWs.addEventListener('message', authListener);
+    setWs(newWs);
   };
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">Generate Meal Plan</h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            type="number"
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-            placeholder="Age"
-            className="p-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-green-500"
-            required
-          />
-          <input
-            type="number"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            placeholder="Weight (kg)"
-            className="p-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-green-500"
-            required
-          />
-          <input
-            type="number"
-            value={height}
-            onChange={(e) => setHeight(e.target.value)}
-            placeholder="Height (cm)"
-            className="p-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-green-500"
-            required
-          />
-          <input
-            type="text"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            placeholder="Goal (e.g., lose weight)"
-            className="p-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-green-500"
-            required
-          />
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-4xl font-bold mb-8 text-gray-800">Create Your Meal Plan</h1>
+      
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Age</label>
+            <input
+              type="number"
+              value={formData.age}
+              onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              min="1"
+              required
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Weight (kg)</label>
+            <input
+              type="number"
+              value={formData.weight}
+              onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              min="1"
+              step="0.1"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Height (cm)</label>
+            <input
+              type="number"
+              value={formData.height}
+              onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              min="1"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Goal</label>
+            <input
+              type="text"
+              value={formData.goal}
+              onChange={(e) => setFormData({ ...formData, goal: e.target.value })}
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              placeholder="e.g., Lose weight, Build muscle"
+              required
+            />
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Select Your Food Preferences</h2>
+
+        <Card className="p-6 bg-white rounded-xl shadow-sm">
           {Object.entries(foods).map(([category, items]) => (
-            <div key={category} className="mb-4">
-              <h3 className="text-lg font-medium capitalize">{category}</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+            <div key={category}> {/* Added a parent wrapper */}
+              <h3 className="text-lg font-medium text-gray-700 mb-4 capitalize">{category}</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {items.map((food) => (
-                  <label key={food} className="flex items-center space-x-2">
+                  <label 
+                    key={food} 
+                    className="flex items-center p-3 space-x-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  >
                     <input
                       type="checkbox"
                       checked={selectedFoods[category]?.includes(food) || false}
                       onChange={() => handleFoodToggle(category, food)}
-                      className="h-4 w-4 text-green-500"
+                      className="h-5 w-5 text-green-600 rounded focus:ring-green-500"
                     />
-                    <span>{food}</span>
+                    <span className="text-gray-700">{food}</span>
                   </label>
                 ))}
               </div>
             </div>
           ))}
+        </Card>
+
+
+        <div className="space-y-4">
+          {loading && (
+            <div className="space-y-2">
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 transition-all duration-300 ease-out" 
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-sm text-gray-600 text-center">{statusMessage}</p>
+            </div>
+          )}
+
+            <Button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 text-lg font-semibold"
+            >
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader/>
+                  Generating...
+                </div>
+              ) : (
+                'Generate My Plan'
+              )}
+            </Button>
+          {error && (
+            <div className="p-4 bg-red-50 text-red-700 rounded-lg text-center">
+              {error}
+            </div>
+          )}
         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className={`w-full p-2 text-white rounded ${
-            loading ? 'bg-green-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
-          }`}
-        >
-          {loading ? <Loader></Loader> : 'Generate Plan'}
-        </button>
-        {error && <p className="text-red-500 text-center">{error}</p>}
       </form>
     </div>
   );
