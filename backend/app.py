@@ -1,13 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from security import get_password_hash, verify_password
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.sessions import SessionMiddleware
 import sqlite3
 import os
 import uuid
-from fastapi import WebSocket, WebSocketDisconnect
 import json
 from datetime import datetime
 from pydantic import BaseModel
@@ -53,27 +51,30 @@ class UserRegister(BaseModel):
     password: str
 
 class MealPlanRequest(BaseModel):
-    pass  # Define your actual request parameters here
+    age: int
+    weight: float
+    height: int
+    goal: str
+    food_preferences: dict
 
-def validate_password(password: str):
-    if len(password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must be at least 8 characters"
-        )
+class TaskStatusResponse(BaseModel):
+    status: str
+    result: Optional[dict]
+    error: Optional[str]
+
 # Database initialization
-@app.on_event("startup")
+
 def startup_db():
     conn = sqlite3.connect("diet_planner.db")
     try:
         c = conn.cursor()
         c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    """)
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        """)
         c.execute("""
             CREATE TABLE IF NOT EXISTS meal_plans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +91,17 @@ def startup_db():
                 carbs REAL NOT NULL,
                 protein REAL NOT NULL,
                 fat REAL NOT NULL
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result TEXT,
+                error TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
         conn.commit()
@@ -117,14 +129,14 @@ async def get_current_user(request: Request):
         conn.close()
 
 # Helper functions
-def save_meal_plan(content):
+def save_meal_plan(content: str) -> str:
     """Save meal plan to file and return file path"""
     filename = f"{uuid.uuid4()}-{datetime.now().strftime('%Y%m%d%H%M%S')}.md"
     filepath = os.path.join(MEAL_PLANS_DIR, filename)
     
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(content.raw)
+            f.write(content)
         return filepath
     except IOError as e:
         logger.error(f"Failed to save meal plan: {str(e)}")
@@ -148,10 +160,14 @@ async def login(user_data: UserLogin, request: Request):
     finally:
         conn.close()
 
-
 @app.post("/api/register")
 async def register(user_data: UserRegister):
-    validate_password(user_data.password)
+    if len(user_data.password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters"
+        )
+        
     conn = sqlite3.connect("diet_planner.db")
     try:
         c = conn.cursor()
@@ -165,86 +181,92 @@ async def register(user_data: UserRegister):
     finally:
         conn.close()
 
-
-# Add WebSocket route
-@app.websocket("/api/generate-plan-ws")
-async def generate_plan_ws(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        # Authenticate first
-        auth = await websocket.receive_text()
-        try:
-            auth_data = json.loads(auth)
-            user = await authenticate_user(auth_data)
-        except Exception as e:
-            await websocket.send_json({"error": "Authentication failed"})
-            await websocket.close()
-            return
-
-        # Receive parameters
-        params = await websocket.receive_json()
-        
-        # Generate meal plan with progress updates
-        async def progress_callback(progress: float, message: str):
-            await websocket.send_json({
-                "type": "progress",
-                "progress": progress,
-                "message": message
-            })
-        
-        try:
-            result = await generate_meal_plan(
-                params, 
-                progress_callback=progress_callback
-            )
-            
-            # Save to database
-            file_path = save_meal_plan(result)
-            conn = sqlite3.connect("diet_planner.db")
-            try:
-                c = conn.cursor()
-                c.execute("""
-                    INSERT INTO meal_plans 
-                    (user_id, date, file_path) 
-                    VALUES (?, datetime('now'), ?)
-                """, (user["id"], file_path))
-                conn.commit()
-                plan_id = c.lastrowid
-                
-                await websocket.send_json({
-                    "type": "complete",
-                    "id": plan_id,
-                    "file_path": file_path
-                })
-            finally:
-                conn.close()
-                
-        except Exception as e:
-            logger.error(f"Generation failed: {str(e)}")
-            await websocket.send_json({
-                "type": "error",
-                "message": "Meal plan generation failed"
-            })
-            
-    except WebSocketDisconnect:
-        logger.info("Client disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
-    finally:
-        await websocket.close()
-
-async def authenticate_user(auth_data: dict):
+@app.post("/api/generate-meal-plan", response_model=dict)
+async def create_meal_plan_task(
+    request_data: MealPlanRequest,
+    current_user: dict = Depends(get_current_user),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    task_id = str(uuid.uuid4())
     conn = sqlite3.connect("diet_planner.db")
     try:
         c = conn.cursor()
-        c.execute("SELECT id, username, password_hash FROM users WHERE username = ?", 
-                 (auth_data["username"],))
-        user = c.fetchone()
+        c.execute("""
+            INSERT INTO tasks (id, user_id, status)
+            VALUES (?, ?, 'pending')
+        """, (task_id, current_user["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    
+    background_tasks.add_task(
+        process_meal_plan_task,
+        task_id,
+        current_user["id"],
+        request_data.dict()
+    )
+    return {"task_id": task_id, "status": "pending"}
+
+@app.get("/api/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(
+    task_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    conn = sqlite3.connect("diet_planner.db")
+    try:
+        c = conn.cursor()
+        c.execute("""
+            SELECT status, result, error
+            FROM tasks
+            WHERE id = ? AND user_id = ?
+        """, (task_id, current_user["id"]))
+        task = c.fetchone()
         
-        if not user or not verify_password(auth_data["password"], user[2]):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
             
-        return {"id": user[0], "username": user[1]}
+        return {
+            "status": task[0],
+            "result": json.loads(task[1]) if task[1] else None,
+            "error": task[2]
+        }
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Invalid task result format")
+    finally:
+        conn.close()
+
+async def process_meal_plan_task(task_id: str, user_id: int, params: dict):
+    conn = sqlite3.connect("diet_planner.db")
+    try:
+        # Simulate meal plan generation
+        result = await generate_meal_plan(params)
+        file_path = save_meal_plan(result)
+        
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO meal_plans (user_id, date, file_path)
+            VALUES (?, datetime('now'), ?)
+        """, (user_id, file_path))
+        plan_id = c.lastrowid
+        conn.commit()
+        
+        c.execute("""
+            UPDATE tasks 
+            SET status = 'completed',
+                result = ?
+            WHERE id = ?
+        """, (json.dumps({"plan_id": plan_id, "file_path": file_path}), task_id))
+        conn.commit()
+        
+    except Exception as e:
+        logger.error(f"Task failed: {str(e)}")
+        c.execute("""
+            UPDATE tasks 
+            SET status = 'failed',
+                error = ?
+            WHERE id = ?
+        """, (str(e), task_id))
+        conn.commit()
     finally:
         conn.close()
 
@@ -275,9 +297,6 @@ async def get_meal_plan(
         except FileNotFoundError:
             logger.error(f"Missing plan file: {file_path}")
             raise HTTPException(status_code=404, detail="Plan content unavailable")
-    except sqlite3.Error as e:
-        logger.error(f"Database error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Database error")
     finally:
         conn.close()
 
@@ -287,40 +306,18 @@ async def get_food_db():
     try:
         c = conn.cursor()
         c.execute("SELECT name, portion, carbs, protein, fat FROM foods")
-        foods = [
+        return [
             {
                 "name": row[0],
                 "portion": row[1],
                 "carbs": row[2],
                 "protein": row[3],
                 "fat": row[4]
-            } 
+            }
             for row in c.fetchall()
         ]
-        return foods
-    finally:
-        conn.close()
-
-@app.get("/api/meal-plans")
-async def get_meal_plans(current_user: dict = Depends(get_current_user)):
-    conn = sqlite3.connect("diet_planner.db")
-    try:
-        c = conn.cursor()
-        c.execute("SELECT id, date FROM meal_plans WHERE user_id = ?", (current_user["id"],))
-        plans = [
-            {"id": row[0], "date": row[1]}
-            for row in c.fetchall()
-        ]
-        return plans
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host="localhost",
-        port=5000,
-        log_level="info",
-        http="h11",
-        timeout_keep_alive=40000
-        )
+    uvicorn.run(app, host="localhost", port=5000)

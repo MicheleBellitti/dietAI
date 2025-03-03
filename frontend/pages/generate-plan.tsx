@@ -1,12 +1,21 @@
-// pages/generate-plan.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Loader from '@/components/Loader';
 import Button from '@/components/Button';
-import Card  from '@/components/Card'; // Assume you have a Card component
+import Card from '@/components/Card';
+
+interface FoodItem {
+  name: string;
+  category: string;
+  portion: string;
+  carbs: number;
+  protein: number;
+  fat: number;
+}
 
 export default function GeneratePlan() {
-  const [foods, setFoods] = useState<{ [category: string]: string[] }>({});
+  const router = useRouter();
+  const [foods, setFoods] = useState<{ [category: string]: FoodItem[] }>({});
   const [selectedFoods, setSelectedFoods] = useState<{ [category: string]: string[] }>({});
   const [formData, setFormData] = useState({
     age: '',
@@ -16,51 +25,31 @@ export default function GeneratePlan() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('');
-  const [ws, setWs] = useState<WebSocket | null>(null);
-  const router = useRouter();
-
-  // WebSocket cleanup
-  useEffect(() => {
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [ws]);
+  const [taskId, setTaskId] = useState<string | null>(null);
 
   const fetchFoods = useCallback(async () => {
     try {
-      const res = await fetch('/api/food-db', { credentials: 'include' });
-      if (res.status === 401) {
-        router.push('/login');
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        const grouped = data.reduce((acc: { [key: string]: string[] }, food: { 
-          name: string; 
-          category: string 
-        }) => {
-          if (!acc[food.category]) acc[food.category] = [];
-          acc[food.category].push(food.name);
-          return acc;
-        }, {});
-        setFoods(grouped);
-        setSelectedFoods(
-          Object.keys(grouped).reduce((acc, category) => ({
-            ...acc,
-            [category]: []
-          }), {})
-        );
-      } else {
-        setError('Failed to load food options.');
-      }
+      const res = await fetch('/api/food-db');
+      if (!res.ok) throw new Error('Failed to load food options');
+      
+      const data: FoodItem[] = await res.json();
+      const grouped = data.reduce((acc, item) => {
+        if (!acc[item.category]) acc[item.category] = [];
+        acc[item.category].push(item);
+        return acc;
+      }, {} as { [key: string]: FoodItem[] });
+      
+      setFoods(grouped);
+      setSelectedFoods(
+        Object.keys(grouped).reduce((acc, category) => ({
+          ...acc,
+          [category]: []
+        }), {})
+      );
     } catch (err) {
-      setError('Error fetching food options');
+      setError(err instanceof Error ? err.message : 'Failed to load food options');
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     fetchFoods();
@@ -75,75 +64,59 @@ export default function GeneratePlan() {
     }));
   };
 
+  const checkTaskStatus = useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`);
+      if (!res.ok) throw new Error('Status check failed');
+      
+      const data = await res.json();
+      
+      if (data.status === 'completed') {
+        router.push(`/plan/${data.result.plan_id}`);
+      } else if (data.status === 'failed') {
+        setError(data.error || 'Meal plan generation failed');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError('Failed to check task status');
+      setLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (!taskId || !loading) return;
+
+    const interval = setInterval(() => checkTaskStatus(taskId), 2000);
+    return () => clearInterval(interval);
+  }, [taskId, loading, checkTaskStatus]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setProgress(0);
-    setStatusMessage('Initializing...');
 
-    const newWs = new WebSocket(`wss://${window.location.host}/api/generate-plan-ws`);
-    
-    newWs.onopen = () => {
-      // Send authentication
-      const authData = {
-        username: localStorage.getItem('username'), // Adjust based on your auth storage
-        token: localStorage.getItem('token')
-      };
-      newWs.send(JSON.stringify(authData));
-    };
+    try {
+      const res = await fetch('/api/generate-meal-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          age: Number(formData.age),
+          weight: Number(formData.weight),
+          height: Number(formData.height),
+          goal: formData.goal,
+          food_preferences: selectedFoods
+        })
+      });
 
-    newWs.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      if (!res.ok) throw new Error('Failed to start generation');
       
-      switch (data.type) {
-        case 'progress':
-          setProgress(data.progress * 100);
-          setStatusMessage(data.message);
-          break;
-        case 'complete':
-          router.push(`/plan/${data.id}`);
-          newWs.close();
-          break;
-        case 'error':
-          setError(data.message);
-          setLoading(false);
-          newWs.close();
-          break;
-      }
-    };
-
-    newWs.onerror = (error) => {
-      setError('Connection error');
+      const data = await res.json();
+      setTaskId(data.task_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Submission failed');
       setLoading(false);
-    };
-
-    newWs.onclose = () => {
-      setLoading(false);
-      setWs(null);
-    };
-
-    // Wait for authentication confirmation
-    const authListener = (event: MessageEvent) => {
-      const authResponse = JSON.parse(event.data);
-      if (authResponse.error) {
-        setError(authResponse.error);
-        newWs.close();
-        return;
-      }
-      
-      // Send parameters after successful auth
-      newWs.send(JSON.stringify({
-        ...formData,
-        food_preferences: selectedFoods
-      }));
-      
-      // Remove the temporary auth listener
-      newWs.removeEventListener('message', authListener);
-    };
-
-    newWs.addEventListener('message', authListener);
-    setWs(newWs);
+    }
   };
 
   return (
@@ -152,7 +125,7 @@ export default function GeneratePlan() {
       
       <form onSubmit={handleSubmit} className="space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
+        <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Age</label>
             <input
               type="number"
@@ -200,25 +173,28 @@ export default function GeneratePlan() {
               required
             />
           </div>
+
         </div>
 
         <Card className="p-6 bg-white rounded-xl shadow-sm">
           {Object.entries(foods).map(([category, items]) => (
-            <div key={category}> {/* Added a parent wrapper */}
-              <h3 className="text-lg font-medium text-gray-700 mb-4 capitalize">{category}</h3>
+            <div key={category} className="mb-8">
+              <h3 className="text-lg font-medium text-gray-700 mb-4 capitalize">
+                {category.replace('_', ' ')}
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {items.map((food) => (
                   <label 
-                    key={food} 
+                    key={food.name}
                     className="flex items-center p-3 space-x-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                   >
                     <input
                       type="checkbox"
-                      checked={selectedFoods[category]?.includes(food) || false}
-                      onChange={() => handleFoodToggle(category, food)}
+                      checked={selectedFoods[category]?.includes(food.name) || false}
+                      onChange={() => handleFoodToggle(category, food.name)}
                       className="h-5 w-5 text-green-600 rounded focus:ring-green-500"
                     />
-                    <span className="text-gray-700">{food}</span>
+                    <span className="text-gray-700">{food.name}</span>
                   </label>
                 ))}
               </div>
@@ -226,34 +202,22 @@ export default function GeneratePlan() {
           ))}
         </Card>
 
-
         <div className="space-y-4">
-          {loading && (
-            <div className="space-y-2">
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-green-500 transition-all duration-300 ease-out" 
-                  style={{ width: `${progress}%` }}
-                />
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 text-lg font-semibold"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center gap-2">
+                <Loader />
+                Generating Plan...
               </div>
-              <p className="text-sm text-gray-600 text-center">{statusMessage}</p>
-            </div>
-          )}
+            ) : (
+              'Generate My Plan'
+            )}
+          </Button>
 
-            <Button 
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 text-lg font-semibold"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <Loader/>
-                  Generating...
-                </div>
-              ) : (
-                'Generate My Plan'
-              )}
-            </Button>
           {error && (
             <div className="p-4 bg-red-50 text-red-700 rounded-lg text-center">
               {error}
